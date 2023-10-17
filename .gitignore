@@ -1,0 +1,12 @@
+**~
+
+__pycache__
+.venv
+
+.idea/workspace.xml
+.idea/**
+
+dump.rdb
+
+.vscode/
+.env
