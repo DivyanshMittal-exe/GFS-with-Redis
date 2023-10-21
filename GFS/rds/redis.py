@@ -1,4 +1,4 @@
-import config
+from GFS import config
 from redis.client import Redis
 
 
