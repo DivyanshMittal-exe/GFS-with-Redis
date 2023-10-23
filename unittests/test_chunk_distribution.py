@@ -33,10 +33,10 @@ class chunk_distribution_test(unittest.TestCase):
         
         
         channel = connection.channel()
-        channel.basic_publish(exchange=CHUNK_EXCHANGE, 
-                                routing_key=routing_key, 
+        channel.basic_publish(exchange=CHUNK_EXCHANGE,
+                                routing_key=routing_key,
                                 body=message,
-                                properties=pika.BasicProperties(headers={'key': key}))
+                                properties=pika.BasicProperties(headers={'key': key, 'type': 'PUT'}))
         connection.close()
             
         time.sleep(1)

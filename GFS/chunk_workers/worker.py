@@ -63,18 +63,31 @@ class Chunk_Worker:
     
     def chunk_exchange(self, event: Event) -> None:
         for method_frame, properties, body in self.channel.consume(queue=self.queue.method.queue):
-            
+
             header = properties.headers
-            key = header['key']            
-            self.chunks_in_memory[key] = body
-            
-            self.channel.basic_ack(method_frame.delivery_tag)
-            
-            if event.is_set():
-                break
-        
-            if WORKER_DUMP_CHUNKS:
-                self.dump_memory()
+
+            if header['type'] == 'GET':
+                key = header['key']
+                # TODO: Handle case when key is not here
+                chunk_to_return = self.chunks_in_memory[key]
+                self.channel.basic_ack(method_frame.delivery_tag)
+                self.channel.basic_publish( exchange='',
+                                            routing_key=properties.reply_to,
+                                            body=chunk_to_return,
+                                            properties=pika.BasicProperties(headers={'key': key}))
+
+
+            else:
+                key = header['key']
+                self.chunks_in_memory[key] = body
+
+                self.channel.basic_ack(method_frame.delivery_tag)
+
+                if event.is_set():
+                    break
+
+                if WORKER_DUMP_CHUNKS:
+                    self.dump_memory()
         
         requeued_messages = self.channel.cancel()
         print('Requeued %i messages' % requeued_messages)
@@ -101,7 +114,7 @@ class Chunk_Worker:
             self.name = self.name.replace("XXXX", str(self.pid))
             
             self.channel.queue_bind(exchange=CHUNK_EXCHANGE,
-                                queue=self.queue.method.queue, 
+                                queue=self.queue.method.queue,
                                 routing_key=f"#.{self.name}.#")
             
             worker_thread = Thread(target=self.work, args=(self.worker_thread_event,))  

@@ -1,3 +1,4 @@
+import pickle
 from collections import defaultdict
 import pika
 from threading import Event, Thread
@@ -45,10 +46,11 @@ class GFS_Server:
 
 
                 chunk_handle = self.file_to_chunk_handles[filename][offset]
+                chunk_handle_serialised = pickle.dumps(chunk_handle)
 
                 channel.basic_publish(  exchange=SERVER_REPLY_EXCHANGE,
                                         routing_key=properties.reply_to,
-                                        body=chunk_handle,
+                                        body=chunk_handle_serialised,
                                         properties=pika.BasicProperties(headers={'key': key}))
 
             if event.is_set():

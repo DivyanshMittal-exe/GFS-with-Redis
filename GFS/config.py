@@ -24,7 +24,7 @@ SERVER_REQUEST_EXCHANGE = ''
 SERVER_REPLY_EXCHANGE = ''
 
 def get_key(filename, offset):
-    return f'{filename}.{offset}'
+    return f'{filename}|{offset}'
 
 def get_filename_and_offset(key):
-    return key.split('.')
+    return key.split('|')

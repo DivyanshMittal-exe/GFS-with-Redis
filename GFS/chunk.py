@@ -17,3 +17,6 @@ class ChunkHandle(BaseModel):
       self.chunk_uid = uuid.uuid4()
 
     self.lease_time += time.perf_counter()
+
+  def get_uid(self) -> str:
+    return str(self.chunk_uid)
