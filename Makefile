@@ -9,7 +9,7 @@ redis_server:
 	gnome-terminal -- bash -c "redis-server --port ${REDIS_PORT}"
 
 rabbitmq:
-	gnome-terminal -- bash - c "docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management"
+	gnome-terminal -- bash -c "sudo docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management"
 
 lua:
 	cat mylib.lua | redis-cli -p ${REDIS_PORT} -x FUNCTION LOAD REPLACE

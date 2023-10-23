@@ -21,10 +21,10 @@ class chunk_distribution_test(unittest.TestCase):
             
             
         worker_names = [worker.name for worker in workers]
-        value = ''.join(random.sample('abcdefghijklmnopqrstuvwxyz', 10))
+        message = ''.join(random.sample('abcdefghijklmnopqrstuvwxyz', 10))
         key = ''.join(random.sample('abcdefghijklmnopqrstuvwxyz', 4))
         
-        message = f"{{'{key}': '{value}'}}"
+        
         chosen_workers = random.sample(worker_names, no_of_workers_to_send)
 
         connection = pika.BlockingConnection(PIKA_CONNECTION_PARAMETERS)
@@ -35,7 +35,8 @@ class chunk_distribution_test(unittest.TestCase):
         channel = connection.channel()
         channel.basic_publish(exchange=CHUNK_EXCHANGE, 
                                 routing_key=routing_key, 
-                                body=message)
+                                body=message,
+                                properties=pika.BasicProperties(headers={'key': key}))
         connection.close()
             
         time.sleep(1)
@@ -46,7 +47,8 @@ class chunk_distribution_test(unittest.TestCase):
         for worker in workers:
             if worker.name in chosen_workers:  
                 with open(worker.name + DEBUG_DUMP_FILE_SUFFIX, 'r') as f:
-                    worker_memory = f.readlines()              
-                self.assertEqual(worker_memory[0], message)
+                    worker_memory = f.readlines()           
+                message_as_dict = f"{{'{key}': b'{message}'}}"   
+                self.assertEqual(worker_memory[0], message_as_dict)
         
         os.system(f'rm *{DEBUG_DUMP_FILE_SUFFIX}')

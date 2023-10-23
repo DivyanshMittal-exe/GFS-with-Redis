@@ -62,11 +62,11 @@ class Chunk_Worker:
         os.kill(self.pid, signal.SIGKILL)
     
     def chunk_exchange(self, event: Event) -> None:
-        for method_frame, _, body in self.channel.consume(queue=self.queue.method.queue):
+        for method_frame, properties, body in self.channel.consume(queue=self.queue.method.queue):
             
-            message_dict = ast.literal_eval(body.decode('utf-8'))
-            
-            self.chunks_in_memory.update(message_dict)
+            header = properties.headers
+            key = header['key']            
+            self.chunks_in_memory[key] = body
             
             self.channel.basic_ack(method_frame.delivery_tag)
             

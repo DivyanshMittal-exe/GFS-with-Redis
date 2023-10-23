@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from rds.redis import Heart
+from GFS.rds.redis import Heart
 
 
 class heart_test(unittest.TestCase):
