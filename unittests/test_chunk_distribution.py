@@ -5,7 +5,7 @@ import unittest
 import pika
 import random
 from GFS.chunk_workers.worker import Chunk_Worker
-from GFS.config import CHUNK_EXCHANGE, DEBUG_DUMP_FILE_SUFFIX, PIKA_CONNECTION_PARAMETERS
+from GFS.config import CHUNK_EXCHANGE, DEBUG_DUMP_FILE_SUFFIX, PIKA_CONNECTION_PARAMETERS, GFSEvent
 
 class chunk_distribution_test(unittest.TestCase):
 
@@ -36,7 +36,7 @@ class chunk_distribution_test(unittest.TestCase):
         channel.basic_publish(exchange=CHUNK_EXCHANGE,
                                 routing_key=routing_key,
                                 body=message,
-                                properties=pika.BasicProperties(headers={'key': key, 'type': 'PUT'}))
+                                properties=pika.BasicProperties(headers={'key': key, 'type': GFSEvent.PUT_CHUNK}))
         connection.close()
             
         time.sleep(1)

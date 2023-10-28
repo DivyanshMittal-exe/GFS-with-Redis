@@ -5,11 +5,20 @@ from GFS.rds import redis
 from threading import Event
 import time
 import logging
-from GFS.config import CHUNK_EXCHANGE, DEBUG_DUMP_FILE_SUFFIX, LOGFILE, PIKA_CONNECTION_PARAMETERS, PIKA_HOST, WORKER_COUNT, WORKER_DUMP_CHUNKS
+from GFS.config import CHUNK_EXCHANGE, DEBUG_DUMP_FILE_SUFFIX, LOGFILE, PIKA_CONNECTION_PARAMETERS, PIKA_HOST, \
+    WORKER_COUNT, WORKER_DUMP_CHUNKS, GFSEvent, CHUNK_SIZE, WRITE_SIZE, WORKER_COUNT_WITH_CHUNK
 import os
 from threading import Thread
 import signal
 
+def find_index_to_write(lst):
+    for i in range(len(lst) - 1, -1, -1):
+        if lst[i] is not None:
+            if i == len(lst) - 1:
+                return None
+            return i + 1
+
+    return 0
 
 def worker_child_handler(signum, frame):
     while True:
@@ -28,7 +37,6 @@ class Chunk_Worker:
     
     def __init__(self) -> None:
         self.name = "ChunkWorker-XXXX"
-        self.heart = redis.Heart(self.name)
         self.pid = -1
         
         self.connection = pika.BlockingConnection(PIKA_CONNECTION_PARAMETERS)
@@ -41,13 +49,20 @@ class Chunk_Worker:
         self.cardiac_arrest_event = Event()
         self.worker_thread_event = Event() 
         
-        self.chunks_in_memory = {}
+        self.write_data_in_memory = {}
+
+        self.persistent_chunks = {}
+
+        self.ack_status = {}
+        self.ack_to_client_queue = {}
+
     
     def dump_memory(self) -> None:
         with open(self.name + DEBUG_DUMP_FILE_SUFFIX, 'w') as f:
-            f.write(str(self.chunks_in_memory))
+            f.write(str(self.write_data_in_memory))
     
     def breathe(self, event: Event) -> None:
+        self.heart = redis.Heart(self.name)
         while True:
             self.heart.beat()
             time.sleep(1) 
@@ -60,16 +75,21 @@ class Chunk_Worker:
         logging.info(f"Killing {self.name}")
         print(f"Killing {self.name}")    
         os.kill(self.pid, signal.SIGKILL)
-    
+
+    def handle_errors(self) -> None:
+        pass
+
     def chunk_exchange(self, event: Event) -> None:
         for method_frame, properties, body in self.channel.consume(queue=self.queue.method.queue):
 
             header = properties.headers
 
-            if header['type'] == 'GET':
+            if header['type'] == GFSEvent.GET_CHUNK:
                 key = header['key']
                 # TODO: Handle case when key is not here
-                chunk_to_return = self.chunks_in_memory[key]
+                chunk_to_return = self.persistent_chunks[key]
+
+
                 self.channel.basic_ack(method_frame.delivery_tag)
                 self.channel.basic_publish( exchange='',
                                             routing_key=properties.reply_to,
@@ -77,10 +97,9 @@ class Chunk_Worker:
                                             properties=pika.BasicProperties(headers={'key': key}))
 
 
-            else:
+            elif header['type'] == GFSEvent.PUT_CHUNK:
                 key = header['key']
-                self.chunks_in_memory[key] = body
-
+                self.write_data_in_memory[key] = body
                 self.channel.basic_ack(method_frame.delivery_tag)
 
                 if event.is_set():
@@ -88,7 +107,113 @@ class Chunk_Worker:
 
                 if WORKER_DUMP_CHUNKS:
                     self.dump_memory()
-        
+
+            elif header['type'] == GFSEvent.WRITE_TO_CHUNK:
+
+                chunk_key = header['chunk_key']
+                data_key = header['data_key']
+                request_id = header['request_id']
+
+                self.ack_to_client_queue[request_id] = properties.reply_to
+
+
+                current_primary, time_to_expire = redis.get_primary(chunk_key)
+                if current_primary != self.name or time_to_expire <= time.perf_counter():
+                    self.handle_errors()
+                    continue
+
+                if chunk_key not in self.persistent_chunks:
+                    self.persistent_chunks[chunk_key] = [None] * (CHUNK_SIZE // WRITE_SIZE)
+
+                current_state_of_chunk = self.persistent_chunks[chunk_key]
+
+                offset_to_write_at = find_index_to_write(current_state_of_chunk)
+
+                if offset_to_write_at is None:
+                    self.handle_errors()
+                    continue
+
+                current_state_of_chunk[offset_to_write_at] = self.write_data_in_memory[data_key]
+                self.persistent_chunks[chunk_key] = current_state_of_chunk
+
+                workers_whom_to_send = redis.get_servers(chunk_key)
+
+                workers_whom_to_send.remove(self.name)
+
+                routing_key = f".{'.'.join(workers_whom_to_send)}."
+
+                self.ack_status[request_id] = 1
+
+                self.channel.basic_publish(
+                    exchange=CHUNK_EXCHANGE,
+                    routing_key=routing_key,
+                    body=b'',
+                    properties=pika.BasicProperties(
+                        headers={'chunk_key': chunk_key,
+                                 'data_key': data_key,
+                                 'request_id': request_id,
+                                 'offset': offset_to_write_at,
+                                 'type': GFSEvent.WRITE_TO_CHUNK_NON_PRIMARY},
+                        reply_to=self.queue.method.queue
+                        )
+                    )
+
+            elif header['type'] == GFSEvent.WRITE_TO_CHUNK_NON_PRIMARY:
+
+                chunk_key = header['chunk_key']
+                data_key = header['data_key']
+                request_id = header['request_id']
+                offset = header['offset']
+
+
+
+                if chunk_key not in self.persistent_chunks:
+                    self.persistent_chunks[chunk_key] = [None] * (CHUNK_SIZE // WRITE_SIZE)
+
+                current_state_of_chunk = self.persistent_chunks[chunk_key]
+
+                current_state_of_chunk[offset] = self.write_data_in_memory[data_key]
+                self.persistent_chunks[chunk_key] = current_state_of_chunk
+
+
+
+                self.channel.basic_publish(
+                    exchange='',
+                    routing_key=properties.reply_to,
+                    body=b'True',
+                    properties=pika.BasicProperties(
+                        headers={'request_id': request_id,
+                                 'type': GFSEvent.ACK_T0_CHUNK_WRITE},
+                    )
+                )
+
+            elif header['type'] == GFSEvent.ACK_T0_CHUNK_WRITE:
+                request_id = header['request_id']
+
+                body = body.decode()
+                if body == 'True':
+                    self.ack_status[request_id] += 1
+
+
+
+                if self.ack_status[request_id] == WORKER_COUNT_WITH_CHUNK:
+                    self.channel.basic_publish(
+                        exchange='',
+                        routing_key=self.ack_to_client_queue[request_id],
+                        body=b'True',
+                        properties=pika.BasicProperties(
+                            headers={'request_id': request_id,
+                                     'type': GFSEvent.ACK_T0_CHUNK_WRITE},
+                        )
+                    )
+
+
+
+
+
+
+
+
         requeued_messages = self.channel.cancel()
         print('Requeued %i messages' % requeued_messages)
 
@@ -144,21 +269,23 @@ def sigterm_kill_handler():
     
     logging.info("All Chunk Workers killed")
     sys.exit(0)
-            
+
+
+
 if __name__ == "__main__":
-    
+
     logging.basicConfig(filename=LOGFILE, level=logging.DEBUG)
     logging.info("Starting Chunk Workers")
 
     workers = [Chunk_Worker() for _ in range(WORKER_COUNT)]
-    
+
     signal.signal(signal.SIGTERM, sigterm_kill_handler)
-    
+
     for worker in workers:
         worker.make_worker()
-    
+
     logging.info("All Chunk Workers started")
-    
+
     while True:
         pid, status = os.wait()
         for worker in workers:

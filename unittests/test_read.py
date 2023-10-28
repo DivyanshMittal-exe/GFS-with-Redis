@@ -7,7 +7,7 @@ import pika
 from GFS.chunk import ChunkHandle
 from GFS.chunk_workers.worker import Chunk_Worker
 from GFS.client import GFSClient
-from GFS.config import CHUNK_EXCHANGE, PIKA_CONNECTION_PARAMETERS, DEBUG_DUMP_FILE_SUFFIX
+from GFS.config import CHUNK_EXCHANGE, PIKA_CONNECTION_PARAMETERS, DEBUG_DUMP_FILE_SUFFIX, GFSEvent
 from GFS.server import GFS_Server
 
 
@@ -15,7 +15,7 @@ class read_test(unittest.TestCase):
 
   def test_read(self):
     filename = "test_file_name.txt"
-    offset = '0'
+    offset = 0
     total_workers = 5
     no_of_workers_to_send = total_workers // 2
 
@@ -40,12 +40,12 @@ class read_test(unittest.TestCase):
 
     channel = connection.channel()
     channel.basic_publish(exchange=CHUNK_EXCHANGE, routing_key=routing_key, body=message,
-                          properties=pika.BasicProperties(headers={'key': str(chunk_handle_is.chunk_uid), 'type': 'PUT'}))
+                          properties=pika.BasicProperties(headers={'key': str(chunk_handle_is.chunk_uid), 'type': GFSEvent.PUT_CHUNK}))
     connection.close()
 
     client = GFSClient()
 
-    with GFS_Server() as server:
+    with GFS_Server(worker_names) as server:
 
       server.file_to_chunk_handles[filename][offset] = chunk_handle_is
 
