@@ -36,9 +36,9 @@ def set_primary(chunk_handel: ChunkHandle) -> None:
 
 def get_primary(uuid: str) -> tuple[str, float]:
   primary = rds.hget(PRIMARY_KEY, uuid)
-  primary = primary.decode()
+  print(f"The primary of {uuid} is {primary}")
   time_to_expire = rds.hget(TIME_TO_EXPIRE_KEY, uuid)
-  time_to_expire = float(time_to_expire.decode())
+  time_to_expire = float(time_to_expire)
 
   return primary, time_to_expire
 

@@ -28,34 +28,22 @@ class read_test(unittest.TestCase):
 
     worker_names = [worker.name for worker in workers]
 
-    chosen_workers = random.sample(worker_names, no_of_workers_to_send)
-
-    chunk_handle_is = ChunkHandle(servers=chosen_workers, primary=chosen_workers[0], lease_time=10)
-
     message = ''.join(random.sample('abcdefghijklmnopqrstuvwxyz', 10))
-
-    connection = pika.BlockingConnection(PIKA_CONNECTION_PARAMETERS)
-
-    routing_key = f".{'.'.join(chosen_workers)}."
-
-    channel = connection.channel()
-    channel.basic_publish(exchange=CHUNK_EXCHANGE,
-                          routing_key=routing_key,
-                          body=message,
-                          properties=pika.BasicProperties(
-                            headers={'key': str(chunk_handle_is.chunk_uid),
-                                     'type': GFSEvent.PUT_CHUNK}))
-    connection.close()
+    print(worker_names)
 
     client = GFSClient()
 
     with GFS_Server(worker_names) as server:
+      filename = 'abc'
+      offset = 0
 
-      server.file_to_chunk_handles[filename][offset] = chunk_handle_is
+
+      client.write(filename, offset, message)
 
       data = client.read(filename, offset)
 
       data = data.decode()
+      print(data)
       self.assertEqual(data, message)
 
     for worker in workers:

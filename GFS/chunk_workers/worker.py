@@ -87,13 +87,21 @@ class Chunk_Worker:
             if header['type'] == GFSEvent.GET_CHUNK:
                 key = header['key']
                 # TODO: Handle case when key is not here
-                chunk_to_return = self.persistent_chunks[key]
+                chunk_to_return_list = self.persistent_chunks[key]
+
+                data = ''
+
+                for chunk in chunk_to_return_list:
+                    if chunk is not None:
+                        data += chunk.decode()
+
+
 
 
                 self.channel.basic_ack(method_frame.delivery_tag)
                 self.channel.basic_publish( exchange='',
                                             routing_key=properties.reply_to,
-                                            body=chunk_to_return,
+                                            body=data.encode(),
                                             properties=pika.BasicProperties(headers={'key': key}))
 
 
@@ -200,10 +208,11 @@ class Chunk_Worker:
                     self.channel.basic_publish(
                         exchange='',
                         routing_key=self.ack_to_client_queue[request_id],
-                        body=b'True',
+                        body=b'',
                         properties=pika.BasicProperties(
                             headers={'request_id': request_id,
-                                     'type': GFSEvent.ACK_T0_CHUNK_WRITE},
+                                     'type': GFSEvent.ACK_T0_CHUNK_WRITE,
+                                     'status': 'True'}
                         )
                     )
 

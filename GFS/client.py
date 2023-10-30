@@ -52,7 +52,8 @@ class GFSClient:
 
     def write_chunk_from_pika(self, ch, method, properties, body):
         header = properties.headers
-        key = header['key']
+        print(header)
+        key = header['status']
         if key == 'True':
           self.last_write_success = True
         self.channel.stop_consuming()
@@ -68,7 +69,7 @@ class GFSClient:
       workers_with_this_chunk = chunk_handle.servers
       routing_key_to_place_chunk = f".{'.'.join(workers_with_this_chunk)}."
 
-      key_for_the_data = uuid.uui4()
+      key_for_the_data = uuid.uuid4()
 
       self.channel.basic_publish(
           exchange=CHUNK_EXCHANGE,
