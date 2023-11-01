@@ -6,7 +6,7 @@ from threading import Event
 import time
 import logging
 from GFS.config import CHUNK_EXCHANGE, DEBUG_DUMP_FILE_SUFFIX, LOGFILE, PIKA_CONNECTION_PARAMETERS, PIKA_HOST, \
-    WORKER_COUNT, WORKER_DUMP_CHUNKS, GFSEvent, CHUNK_SIZE, WRITE_SIZE, WORKER_COUNT_WITH_CHUNK
+    WORKER_COUNT, WORKER_DUMP_CHUNKS, GFSEvent, CHUNK_SIZE, WRITE_SIZE, WORKER_COUNT_WITH_CHUNK, StatusCodes
 import os
 from threading import Thread
 import signal
@@ -127,7 +127,7 @@ class Chunk_Worker:
 
                 current_primary, time_to_expire = redis.get_primary(chunk_key)
                 if current_primary != self.name or time_to_expire <= time.perf_counter():
-                    self.handle_errors()
+                    self.handle_errors(StatusCodes.NOT_A_PRIMARY)
                     continue
 
                 if chunk_key not in self.persistent_chunks:
@@ -138,7 +138,7 @@ class Chunk_Worker:
                 offset_to_write_at = find_index_to_write(current_state_of_chunk)
 
                 if offset_to_write_at is None:
-                    self.handle_errors()
+                    self.handle_errors(StatusCodes.CHUNK_FULL)
                     continue
 
                 current_state_of_chunk[offset_to_write_at] = self.write_data_in_memory[data_key]

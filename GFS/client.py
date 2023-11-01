@@ -61,6 +61,7 @@ class GFSClient:
     def write(self, filename, offset, data) -> bool:
 
       key = get_key(filename, offset)
+
       if key not in self.file_offset_to_chunk_handle:
         self.get_chunk_handle(filename, offset)
 
@@ -100,6 +101,8 @@ class GFSClient:
           )
       )
 
+
+      ## TODO: Change to non blocking
       self.channel.basic_consume(queue=self.reply_queue.method.queue,
                                  on_message_callback=self.write_chunk_from_pika,
                                  auto_ack=True)

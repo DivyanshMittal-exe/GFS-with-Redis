@@ -42,3 +42,12 @@ class GFSEvent(str, Enum):
     WRITE_TO_CHUNK = 'write_to_chunk'
     WRITE_TO_CHUNK_NON_PRIMARY = 'write_to_chunk_non_primary'
     ACK_T0_CHUNK_WRITE = 'ack_to_chunk_write'
+
+class StatusCodes(Enum):
+    WRITE_SUCCESS = auto()
+    WRITE_FAILED = auto()
+    READ_SUCCESS = auto()
+    READ_FAILED = auto()
+    CHUNK_FULL = auto()
+    BAD_OFFSET = auto()
+    NOT_A_PRIMARY = auto()

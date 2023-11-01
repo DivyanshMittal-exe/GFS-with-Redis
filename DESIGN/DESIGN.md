@@ -8,3 +8,9 @@
 - Worker-Chunk data is persisitent for now. Will store this in Redis
 - Using RABBIT-MQ to exchange chunks
 - Requesting chunk handle from master is blocking. It will publish a message and wait for exactly 1 message
+
+
+# Features
+
+- If the worker comes back alive before the lease expires, we will always renew its lease. Version number is never
+updated un-necessarily

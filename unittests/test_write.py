@@ -1,5 +1,6 @@
 import os
 import random
+import time
 import unittest
 
 import pika
@@ -14,10 +15,7 @@ from GFS.server import GFS_Server
 class read_test(unittest.TestCase):
 
   def test_read(self):
-    filename = "test_file_name.txt"
-    offset = 0
     total_workers = 5
-    no_of_workers_to_send = total_workers // 2
 
     workers = [Chunk_Worker() for _ in range(total_workers)]
 
@@ -39,6 +37,9 @@ class read_test(unittest.TestCase):
 
 
       client.write(filename, offset, message)
+
+
+      time.sleep(1)
 
       data = client.read(filename, offset)
 

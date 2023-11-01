@@ -20,6 +20,10 @@ class Heart:
     return rds.ttl(self.key)
 
 
+def is_alive(key):
+  return rds.ttl(key) >= -1
+
+
 
 def set_primary(chunk_handel: ChunkHandle) -> None:
   uuid = chunk_handel.get_uid()
@@ -28,10 +32,14 @@ def set_primary(chunk_handel: ChunkHandle) -> None:
   servers = chunk_handel.servers
 
   rds.hset(PRIMARY_KEY,uuid, primary)
+  ## Note in server this value is changed when worker is alive
   rds.hset(TIME_TO_EXPIRE_KEY, uuid, lease_time)
   servers_key = f'servers:{uuid}'
   rds.delete(servers_key)
   rds.lpush(servers_key, *servers)
+
+def set_lease(chunk_handle: ChunkHandle, time: float)->None:
+  rds.hset(TIME_TO_EXPIRE_KEY, chunk_handle.get_uid(), time)
 
 
 def get_primary(uuid: str) -> tuple[str, float]:
