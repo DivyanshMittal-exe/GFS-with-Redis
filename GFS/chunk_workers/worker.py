@@ -76,8 +76,34 @@ class Chunk_Worker:
         print(f"Killing {self.name}")    
         os.kill(self.pid, signal.SIGKILL)
 
-    def handle_errors(self) -> None:
-        pass
+    def handle_errors(self, status_code: StatusCodes, **kwargs) -> None:
+        if status_code == StatusCodes.NOT_A_PRIMARY:
+            properties = kwargs['properties']
+            request_id = kwargs['request_id']
+            self.channel.basic_publish(
+                exchange='',
+                routing_key=properties.reply_to,
+                body=b'',
+                properties=pika.BasicProperties(
+                    headers={'request_id': request_id,
+                             'type': GFSEvent.ACK_T0_CHUNK_WRITE,
+                             'status': StatusCodes.NOT_A_PRIMARY}
+                    )
+                )
+        elif status_code == StatusCodes.CHUNK_FULL:
+            properties = kwargs['properties']
+            request_id = kwargs['request_id']
+            self.channel.basic_publish(
+                exchange='',
+                routing_key=properties.reply_to,
+                body=b'',
+                properties=pika.BasicProperties(
+                    headers={'request_id': request_id,
+                             'type': GFSEvent.ACK_T0_CHUNK_WRITE,
+                             'status': StatusCodes.CHUNK_FULL}
+                    )
+                )
+
 
     def chunk_exchange(self, event: Event) -> None:
         for method_frame, properties, body in self.channel.consume(queue=self.queue.method.queue):
@@ -127,7 +153,11 @@ class Chunk_Worker:
 
                 current_primary, time_to_expire = redis.get_primary(chunk_key)
                 if current_primary != self.name or time_to_expire <= time.perf_counter():
-                    self.handle_errors(StatusCodes.NOT_A_PRIMARY)
+                    kwargs = {
+                            'properties': properties,
+                            'request_id': request_id
+                        }
+                    self.handle_errors(StatusCodes.NOT_A_PRIMARY, kwargs)
                     continue
 
                 if chunk_key not in self.persistent_chunks:
@@ -138,7 +168,11 @@ class Chunk_Worker:
                 offset_to_write_at = find_index_to_write(current_state_of_chunk)
 
                 if offset_to_write_at is None:
-                    self.handle_errors(StatusCodes.CHUNK_FULL)
+                    kwargs = {
+                        'properties': properties,
+                        'request_id': request_id
+                        }
+                    self.handle_errors(StatusCodes.CHUNK_FULL, kwargs)
                     continue
 
                 current_state_of_chunk[offset_to_write_at] = self.write_data_in_memory[data_key]
@@ -212,7 +246,7 @@ class Chunk_Worker:
                         properties=pika.BasicProperties(
                             headers={'request_id': request_id,
                                      'type': GFSEvent.ACK_T0_CHUNK_WRITE,
-                                     'status': 'True'}
+                                     'status': StatusCodes.WRITE_SUCCESS}
                         )
                     )
 

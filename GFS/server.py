@@ -25,12 +25,19 @@ class GFS_Server:
   def handle_errors(self, status_code: StatusCodes, **kwargs):
     if status_code == StatusCodes.BAD_OFFSET:
       print(f'Bad offset {kwargs["offset"]}')
-
+      recommended_offset = kwargs['offset']
       channel = kwargs['channel']
       key = kwargs['key']
+      properties = kwargs['properties']
 
-      channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE, routing_key=properties.reply_to,
-                          body=chunk_handle_serialised, properties=pika.BasicProperties(headers={'key': key}))
+      channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE,
+                            routing_key=properties.reply_to,
+                            body=b'',
+                            properties=pika.BasicProperties(headers={
+                              'key': key,
+                              'status': StatusCodes.BAD_OFFSET,
+                              'offset': recommended_offset
+                              }))
 
 
 
@@ -61,7 +68,7 @@ class GFS_Server:
 
           if filename not in self.file_to_chunk_handles:
             if offset != 0:
-              kwargs = {'offset': 0, 'channel': channel, 'key': key}
+              kwargs = {'offset': 0, 'channel': channel, 'key': key, 'properties': properties}
               self.handle_errors(StatusCodes.BAD_OFFSET, **kwargs)
               continue
 
@@ -69,7 +76,7 @@ class GFS_Server:
           else:
             if offset - 1 not in self.file_to_chunk_handles[filename]:
               last_offset_in_mem = max(self.file_to_chunk_handles[filename].keys())
-              kwargs = {'offset': last_offset_in_mem, 'channel': channel, 'key':key}
+              kwargs = {'offset': last_offset_in_mem, 'channel': channel, 'key':key, 'properties': properties}
               self.handle_errors(StatusCodes.BAD_OFFSET, **kwargs)
               continue
 
@@ -86,8 +93,14 @@ class GFS_Server:
         chunk_handle = self.file_to_chunk_handles[filename][offset]
         chunk_handle_serialised = pickle.dumps(chunk_handle)
 
-        channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE, routing_key=properties.reply_to,
-                              body=chunk_handle_serialised, properties=pika.BasicProperties(headers={'key': key}))
+        channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE,
+                              routing_key=properties.reply_to,
+                              body=chunk_handle_serialised,
+                              properties=pika.BasicProperties(
+                                headers={
+                                  'key': key,
+                                  'status': StatusCodes.CHUNK_HANDLE_REQUEST_SUCCESSFUL
+                                  }))
 
       if event.is_set():
         break
@@ -110,12 +123,13 @@ class GFS_Server:
           chunk_handle.lease_time = time_to_expire
           chunk_handle.primary = primary
 
-          if time_to_expire < min_lease_time:
-            min_lease_time = time_to_expire
-            chunk_with_min_lease_time = chunk_handle
+          if time_to_expire > time.perf_counter():
+            if time_to_expire < min_lease_time:
+              min_lease_time = time_to_expire
+              chunk_with_min_lease_time = chunk_handle
 
       if chunk_with_min_lease_time is None:
-        time.sleep(LEASE_TIME/2)
+        pass
       elif is_alive(chunk_with_min_lease_time.primary):
         time_to_set = min(min_lease_time, time.perf_counter() + LEASE_TIME)
         set_lease(chunk_with_min_lease_time, time_to_set)
@@ -126,10 +140,14 @@ class GFS_Server:
 
       for file_to_chunk_dict in self.file_to_chunk_handles.values():
         for chunk_handle in file_to_chunk_dict.values():
-          if chunk_handle.lease_time < min_lease_time:
-            min_lease_time = chunk_handle.lease_time
+          if chunk_handle.lease_time > time.perf_counter():
+            if chunk_handle.lease_time < min_lease_time:
+              min_lease_time = chunk_handle.lease_time
 
-      if min_lease_time - time.perf_counter() > 0.1:
+      if min_lease_time > LEASE_TIME:
+        time.sleep(LEASE_TIME/2)
+
+      elif min_lease_time - time.perf_counter() > 0.1:
         time.sleep((min_lease_time - time.perf_counter())/2)
 
 

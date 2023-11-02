@@ -11,6 +11,8 @@ LOGFILE = 'GFS.log'
 WORKER_COUNT_WITH_CHUNK = 3
 LEASE_TIME = 60
 
+TIMEOUT = 2
+
 WORKER_COUNT = 4
 
 PIKA_HOST = 'localhost'
@@ -44,6 +46,7 @@ class GFSEvent(str, Enum):
     ACK_T0_CHUNK_WRITE = 'ack_to_chunk_write'
 
 class StatusCodes(Enum):
+    CHUNK_HANDLE_REQUEST_SUCCESSFUL = auto()
     WRITE_SUCCESS = auto()
     WRITE_FAILED = auto()
     READ_SUCCESS = auto()
