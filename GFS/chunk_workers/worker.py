@@ -1,4 +1,5 @@
 import ast
+import pickle
 import sys
 import pika
 from GFS.rds import redis
@@ -72,6 +73,7 @@ class Chunk_Worker:
         print(f"{self.name} is dead.")
     
     def kill(self) -> None:
+        self.worker_thread_event.set()
         logging.info(f"Killing {self.name}")
         print(f"Killing {self.name}")    
         os.kill(self.pid, signal.SIGKILL)
@@ -115,23 +117,17 @@ class Chunk_Worker:
                 # TODO: Handle case when key is not here
                 chunk_to_return_list = self.persistent_chunks[key]
 
-                data = ''
-
-                for chunk in chunk_to_return_list:
-                    if chunk is not None:
-                        data += chunk.decode()
 
 
-
-
+                data = pickle.dumps(chunk_to_return_list)
                 self.channel.basic_ack(method_frame.delivery_tag)
                 self.channel.basic_publish( exchange='',
                                             routing_key=properties.reply_to,
-                                            body=data.encode(),
+                                            body=data,
                                             properties=pika.BasicProperties(headers={'key': key}))
 
 
-            elif header['type'] == GFSEvent.PUT_CHUNK:
+            elif header['type'] == GFSEvent.PUT_DATA_OF_A_CHUNK:
                 key = header['key']
                 self.write_data_in_memory[key] = body
                 self.channel.basic_ack(method_frame.delivery_tag)
@@ -152,6 +148,7 @@ class Chunk_Worker:
 
 
                 current_primary, time_to_expire = redis.get_primary(chunk_key)
+
                 if current_primary != self.name or time_to_expire <= time.perf_counter():
                     kwargs = {
                             'properties': properties,
@@ -174,6 +171,8 @@ class Chunk_Worker:
                         }
                     self.handle_errors(StatusCodes.CHUNK_FULL, kwargs)
                     continue
+
+
 
                 current_state_of_chunk[offset_to_write_at] = self.write_data_in_memory[data_key]
                 self.persistent_chunks[chunk_key] = current_state_of_chunk
@@ -267,7 +266,9 @@ class Chunk_Worker:
     def work(self, event: Event) -> None:
         while True:
             time.sleep(1)
-            
+            if event.is_set():
+                break
+
     
     def make_worker(self) -> None:  
         pid = os.fork()

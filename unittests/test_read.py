@@ -44,7 +44,7 @@ class read_test(unittest.TestCase):
                           body=message,
                           properties=pika.BasicProperties(
                             headers={'key': str(chunk_handle_is.chunk_uid),
-                                     'type': GFSEvent.PUT_CHUNK}))
+                                     'type': GFSEvent.PUT_DATA_OF_A_CHUNK}))
     connection.close()
 
     client = GFSClient()

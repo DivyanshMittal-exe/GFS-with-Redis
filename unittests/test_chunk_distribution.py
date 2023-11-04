@@ -36,7 +36,7 @@ class chunk_distribution_test(unittest.TestCase):
         channel.basic_publish(exchange=CHUNK_EXCHANGE,
                                 routing_key=routing_key,
                                 body=message,
-                                properties=pika.BasicProperties(headers={'key': key, 'type': GFSEvent.PUT_CHUNK}))
+                                properties=pika.BasicProperties(headers={'key': key, 'type': GFSEvent.PUT_DATA_OF_A_CHUNK}))
         connection.close()
             
         time.sleep(1)

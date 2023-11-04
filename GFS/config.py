@@ -21,7 +21,7 @@ CHUNK_EXCHANGE = 'chunk_exchange'
 
 # DEBUG VARIABLES
 DEBUG_DUMP_FILE_SUFFIX = 'dump.txt'
-WORKER_DUMP_CHUNKS = True
+WORKER_DUMP_CHUNKS = False
 
 SERVER_REQUEST_QUEUE = 'server_request_queue'
 SERVER_REPLY_QUEUE = 'server_reply_queue'
@@ -38,19 +38,19 @@ def get_filename_and_offset(key):
 from enum import Enum, auto
 
 class GFSEvent(str, Enum):
-    PUT_CHUNK = 'put_chunk'
+    PUT_DATA_OF_A_CHUNK = 'PUT_DATA_OF_A_CHUNK'
     GET_CHUNK = 'get_chunk'
     UPDATE_PRIMARY = 'update_primary'
     WRITE_TO_CHUNK = 'write_to_chunk'
     WRITE_TO_CHUNK_NON_PRIMARY = 'write_to_chunk_non_primary'
     ACK_T0_CHUNK_WRITE = 'ack_to_chunk_write'
 
-class StatusCodes(Enum):
-    CHUNK_HANDLE_REQUEST_SUCCESSFUL = auto()
-    WRITE_SUCCESS = auto()
-    WRITE_FAILED = auto()
-    READ_SUCCESS = auto()
-    READ_FAILED = auto()
-    CHUNK_FULL = auto()
-    BAD_OFFSET = auto()
-    NOT_A_PRIMARY = auto()
+class StatusCodes(str, Enum):
+    CHUNK_HANDLE_REQUEST_SUCCESSFUL = 'CHUNK_HANDLE_REQUEST_SUCCESSFUL'
+    WRITE_SUCCESS = 'WRITE_SUCCESS'
+    WRITE_FAILED = 'WRITE_FAILED'
+    READ_SUCCESS = 'READ_SUCCESS'
+    READ_FAILED = 'READ_FAILED'
+    CHUNK_FULL = 'CHUNK_FULL'
+    BAD_OFFSET = 'BAD_OFFSET'
+    NOT_A_PRIMARY = 'NOT_A_PRIMARY'

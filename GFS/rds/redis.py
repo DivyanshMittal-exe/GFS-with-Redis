@@ -24,8 +24,8 @@ def is_alive(key):
   return rds.ttl(key) >= -1
 
 
-
-def set_primary(chunk_handel: ChunkHandle) -> None:
+## Only call this during chunk creation
+def set_primary_during_chunk_creation(chunk_handel: ChunkHandle) -> None:
   uuid = chunk_handel.get_uid()
   primary = chunk_handel.primary
   lease_time = chunk_handel.lease_time
@@ -34,6 +34,13 @@ def set_primary(chunk_handel: ChunkHandle) -> None:
   rds.hset(PRIMARY_KEY,uuid, primary)
   ## Note in server this value is changed when worker is alive
   rds.hset(TIME_TO_EXPIRE_KEY, uuid, lease_time)
+
+  chunk_handel_key = f'chunk_handle:{uuid}'
+  rds.hset(chunk_handel_key, 'MASTER', chunk_handel.version)
+
+  for server in servers:
+    rds.hset(chunk_handel_key, server, chunk_handel.version)
+
   servers_key = f'servers:{uuid}'
   rds.delete(servers_key)
   rds.lpush(servers_key, *servers)
@@ -49,6 +56,13 @@ def get_primary(uuid: str) -> tuple[str, float]:
   time_to_expire = float(time_to_expire)
 
   return primary, time_to_expire
+
+def get_version(uuid: str)-> int:
+  version_key = f'chunk_handle:{uuid}'
+  latest_version = rds.hget(version_key, 'MASTER')
+  return int(latest_version)
+
+
 
 def get_servers(uuid: str) -> List[str]:
   servers_key = f'servers:{uuid}'

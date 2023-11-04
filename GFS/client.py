@@ -66,13 +66,14 @@ class GFSClient:
     key_for_the_data = uuid.uuid4()
 
     self.channel.basic_publish(exchange=CHUNK_EXCHANGE, routing_key=routing_key_to_place_chunk, body=data,
-      properties=pika.BasicProperties(headers={'key': str(key_for_the_data), 'type': GFSEvent.PUT_CHUNK}))
+      properties=pika.BasicProperties(headers={'key': str(key_for_the_data), 'type': GFSEvent.PUT_DATA_OF_A_CHUNK}))
 
     write_request_to_server = chunk_handle.primary
 
     routing_key = f'.{write_request_to_server}.'
 
-    request_id = uuid.uuid4()
+    request_id = str(uuid.uuid4())
+
 
     self.channel.basic_publish(exchange=CHUNK_EXCHANGE, routing_key=routing_key, body=b'',
       properties=pika.BasicProperties(
@@ -88,14 +89,22 @@ class GFSClient:
 
       header = properties.headers
       status = header['status']
-      type = header['status']
+      type_of_message = header['type']
       request_id_returned = header['request_id']
-      if request_id_returned == request_id and type == GFSEvent.ACK_T0_CHUNK_WRITE:
+
+      print(status)
+      print(type_of_message)
+      print(request_id_returned)
+      print(request_id)
+
+      print(f'request_id_returned: {type(request_id_returned)} == {type(request_id)}, {request_id_returned == request_id} | {type_of_message} | {type_of_message == GFSEvent.ACK_T0_CHUNK_WRITE}' )
+
+      if request_id_returned == request_id and type_of_message == GFSEvent.ACK_T0_CHUNK_WRITE:
           return status
 
     return StatusCodes.WRITE_FAILED
 
-  def read(self, filename, offset) -> Union[Tuple[bool, bytes], Tuple[bool, int, dict]]:
+  def read(self, filename, offset) -> Union[Tuple[bool, Union[bytes, str]], Tuple[bool, int, dict]]:
     key = get_key(filename, offset)
     if key not in self.file_offset_to_chunk_handle:
       status, params = self.get_chunk_handle(filename, offset)
@@ -126,6 +135,13 @@ class GFSClient:
       status = header['status']
 
       if key == chunk_handle_uid:
-        return True, body
+
+        data = ''
+        chunk_data_list = pickle.loads(body)
+        for chunk_data in chunk_data_list:
+          if chunk_data is not None:
+            data += chunk_data
+
+        return True, data
 
     return False, b''

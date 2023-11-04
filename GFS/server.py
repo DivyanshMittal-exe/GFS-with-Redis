@@ -10,7 +10,7 @@ import pika
 from GFS.chunk import ChunkHandle
 from GFS.config import PIKA_CONNECTION_PARAMETERS, SERVER_REPLY_EXCHANGE, SERVER_REPLY_QUEUE, SERVER_REQUEST_QUEUE, \
   get_filename_and_offset, WORKER_COUNT_WITH_CHUNK, LEASE_TIME, StatusCodes
-from GFS.rds.redis import set_primary, is_alive, set_lease, get_primary
+from GFS.rds.redis import set_primary_during_chunk_creation, is_alive, set_lease, get_primary
 
 
 class GFS_Server:
@@ -64,6 +64,7 @@ class GFS_Server:
 
         filename, offset = get_filename_and_offset(key)
 
+
         if filename not in self.file_to_chunk_handles or offset not in self.file_to_chunk_handles[filename]:
 
           if filename not in self.file_to_chunk_handles:
@@ -86,9 +87,10 @@ class GFS_Server:
                                      primary=workers_that_will_have_the_chunk[0],
                                      lease_time=LEASE_TIME)
 
-          set_primary(chunk_handle)
+          set_primary_during_chunk_creation(chunk_handle)
 
           self.file_to_chunk_handles[filename][offset] = chunk_handle
+
 
         chunk_handle = self.file_to_chunk_handles[filename][offset]
         chunk_handle_serialised = pickle.dumps(chunk_handle)
