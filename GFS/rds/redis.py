@@ -62,6 +62,15 @@ def get_version(uuid: str)-> int:
   latest_version = rds.hget(version_key, 'MASTER')
   return int(latest_version)
 
+def get_my_version(name:str, uuid:str)->int:
+  version_key = f'chunk_handle:{uuid}'
+  latest_version = rds.hget(version_key, name)
+  return int(latest_version)
+
+
+def set_my_version(name:str, uuid:str, version:int)->None:
+  version_key = f'chunk_handle:{uuid}'
+  rds.hset(version_key, name, version)
 
 
 def get_servers(uuid: str) -> List[str]:

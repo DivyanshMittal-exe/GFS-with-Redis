@@ -90,17 +90,19 @@ class GFSClient:
       header = properties.headers
       status = header['status']
       type_of_message = header['type']
-      request_id_returned = header['request_id']
 
-      print(status)
-      print(type_of_message)
-      print(request_id_returned)
-      print(request_id)
+      if  type_of_message == GFSEvent.ACK_T0_CHUNK_WRITE:
+        request_id_returned = header['request_id']
 
-      print(f'request_id_returned: {type(request_id_returned)} == {type(request_id)}, {request_id_returned == request_id} | {type_of_message} | {type_of_message == GFSEvent.ACK_T0_CHUNK_WRITE}' )
+        print(status)
+        print(type_of_message)
+        print(request_id_returned)
+        print(request_id)
 
-      if request_id_returned == request_id and type_of_message == GFSEvent.ACK_T0_CHUNK_WRITE:
-          return status
+        print(f'request_id_returned: {type(request_id_returned)} == {type(request_id)}, {request_id_returned == request_id} | {type_of_message} | {type_of_message == GFSEvent.ACK_T0_CHUNK_WRITE}' )
+
+        if request_id_returned == request_id:
+            return status
 
     return StatusCodes.WRITE_FAILED
 
@@ -130,9 +132,17 @@ class GFSClient:
       if method_frame is None:
         break
 
+      status = header['status']
+      type = header['type']
+      if type != GFSEvent.ACK_TO_CHUNK_READ:
+        continue
+
+      if status != StatusCodes.READ_SUCCESS:
+        return False, b''
+
+
       header = properties.headers
       key = header['key']
-      status = header['status']
 
       if key == chunk_handle_uid:
 
