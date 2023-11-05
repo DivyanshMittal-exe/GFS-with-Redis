@@ -45,6 +45,8 @@ class GFSEvent(str, Enum):
     WRITE_TO_CHUNK_NON_PRIMARY = 'write_to_chunk_non_primary'
     ACK_T0_CHUNK_WRITE = 'ack_to_chunk_write'
     ACK_TO_CHUNK_READ = 'ack_to_chunk_read'
+    UPDATE_CHUNK_VERSION = 'update_chunk_version'
+    ACK_TO_UPDATE_CHUNK_VERSION = 'ack_to_update_chunk_version'
 
 class StatusCodes(str, Enum):
     CHUNK_HANDLE_REQUEST_SUCCESSFUL = 'CHUNK_HANDLE_REQUEST_SUCCESSFUL'

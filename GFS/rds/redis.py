@@ -45,6 +45,18 @@ def set_primary_during_chunk_creation(chunk_handel: ChunkHandle) -> None:
   rds.delete(servers_key)
   rds.lpush(servers_key, *servers)
 
+
+def update_chunk_version(chunk_handel: ChunkHandle):
+  uuid = chunk_handel.get_uid()
+  primary = chunk_handel.primary
+  lease_time = chunk_handel.lease_time
+
+  rds.hset(PRIMARY_KEY,uuid, primary)
+  rds.hset(TIME_TO_EXPIRE_KEY, uuid, lease_time)
+
+  chunk_handel_key = f'chunk_handle:{uuid}'
+  rds.hset(chunk_handel_key, 'MASTER', chunk_handel.version)
+
 def set_lease(chunk_handle: ChunkHandle, time: float)->None:
   rds.hset(TIME_TO_EXPIRE_KEY, chunk_handle.get_uid(), time)
 

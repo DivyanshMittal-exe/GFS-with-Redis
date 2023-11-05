@@ -20,8 +20,13 @@ unittest:
 workers:
 	python -m chunk_workers.worker
 
-make server:
+server:
 	python -m server
 
-make client:
+client:
 	python -m client
+
+health:
+	flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+	flake8 GFS --count --max-complexity=11 --max-line-length=127 --statistics
+	mypy GFS

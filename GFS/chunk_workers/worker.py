@@ -112,6 +112,35 @@ class Chunk_Worker:
     else:
       raise NotImplementedError
 
+
+  def get_chunk_from_others(self, key):
+    all_servers = get_servers(key)
+    master_version = get_version(key)
+    for server in all_servers:
+      if get_my_version(server, key) == master_version:
+        routing_key = f'.{server}.'
+
+        self.channel.basic_publish(exchange=CHUNK_EXCHANGE, routing_key=routing_key,
+                                   properties=pika.BasicProperties(
+                                     headers={'key': key, 'type': GFSEvent.GET_CHUNK},
+                                     reply_to=self.internal_chunk_exchange_queue.method.queue))
+
+        for method_frame_r, properties_r, body_r in self.channel.consume(queue=self.internal_chunk_exchange_queue,
+                                                                         auto_ack=True, inactivity_timeout=TIMEOUT):
+          if properties_r is None:
+            break
+
+          header_r = properties_r.headers
+          key_of_recieved_chunk = header_r['key']
+          version_recieved = header_r['version']
+
+          if key_of_recieved_chunk == key:
+            chunk_data_list = pickle.loads(body_r)
+            self.persistent_chunks[key] = chunk_data_list
+            set_my_version(self.name, key, version_recieved)
+            break
+
+
   def chunk_exchange(self, event: Event) -> None:
     for method_frame, properties, body in self.channel.consume(queue=self.queue.method.queue):
 
@@ -131,39 +160,19 @@ class Chunk_Worker:
         my_version = get_my_version(self.name, key)
         master_version = get_version(key)
 
-        assert master_version >= my_version, 'Master is behind worker, not possible'
+        ######## This assertion is False, as
+        # assert master_version >= my_version, 'Master is behind worker, not possible'
+
+
 
         if my_version < master_version:
-          all_servers = get_servers(key)
-          for server in all_servers:
-            if get_my_version(server, key) == master_version:
-              routing_key = f'.{server}.'
-
-              self.channel.basic_publish(exchange=CHUNK_EXCHANGE, routing_key=routing_key,
-                                         properties=pika.BasicProperties(
-                                           headers={'key': key, 'type': GFSEvent.GET_CHUNK},
-                                           reply_to=self.internal_chunk_exchange_queue.method.queue))
-
-              for method_frame_r, properties_r, body_r in self.channel.consume(queue=self.internal_chunk_exchange_queue,
-                                                                         auto_ack=True, inactivity_timeout=TIMEOUT):
-                if properties_r is None:
-                  break
-
-                header_r = properties_r.headers
-                key_of_recieved_chunk = header_r['key']
-                version_recieved = header_r['version']
-
-                if key_of_recieved_chunk == key:
-                  chunk_data_list = pickle.loads(body_r)
-                  self.persistent_chunks[key] = chunk_data_list
-                  set_my_version(self.name, key, version_recieved)
-
-
+          self.get_chunk_from_others(key)
 
         my_version = get_my_version(self.name, key)
         master_version = get_version(key)
 
-        assert master_version >= my_version, 'Master is behind worker after exchanges, not possible'
+        ######## This assertion is False, as
+        # assert master_version >= my_version, 'Master is behind worker after exchanges, not possible'
         if my_version == master_version:
           chunk_to_return_list = self.persistent_chunks[key]
           data = pickle.dumps(chunk_to_return_list)
@@ -242,6 +251,12 @@ class Chunk_Worker:
         request_id = header['request_id']
         offset = header['offset']
 
+        my_version = get_my_version(self.name, chunk_key)
+        master_version = get_version(chunk_key)
+
+        if my_version < master_version:
+          self.get_chunk_from_others(chunk_key)
+
         if chunk_key not in self.persistent_chunks:
           self.persistent_chunks[chunk_key] = [None] * (CHUNK_SIZE // WRITE_SIZE)
 
@@ -266,7 +281,25 @@ class Chunk_Worker:
                                      properties=pika.BasicProperties(
                                        headers={'request_id': request_id, 'type': GFSEvent.ACK_T0_CHUNK_WRITE,
                                                 'status': StatusCodes.WRITE_SUCCESS}))
+      elif header['type'] == GFSEvent.UPDATE_CHUNK_VERSION:
 
+        id = header['key']
+        my_version = get_version(id)
+        if my_version == get_my_version(id):
+          set_my_version(self.name, my_version+1)
+
+          self.channel.basic_publish(exchange='',
+                                     routing_key=properties.reply_to,
+                                     body=b'',
+                                     properties=pika.BasicProperties(
+                                       headers={'key': id,
+                                                'type': GFSEvent.ACK_TO_UPDATE_CHUNK_VERSION,
+                                                'name': self.name}))
+
+
+
+      else:
+        raise KeyError
     requeued_messages = self.channel.cancel()
     print('Requeued %i messages' % requeued_messages)
 

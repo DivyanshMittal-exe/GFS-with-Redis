@@ -9,8 +9,9 @@ import pika
 
 from GFS.chunk import ChunkHandle
 from GFS.config import PIKA_CONNECTION_PARAMETERS, SERVER_REPLY_EXCHANGE, SERVER_REPLY_QUEUE, SERVER_REQUEST_QUEUE, \
-  get_filename_and_offset, WORKER_COUNT_WITH_CHUNK, LEASE_TIME, StatusCodes
-from GFS.rds.redis import set_primary_during_chunk_creation, is_alive, set_lease, get_primary
+  get_filename_and_offset, WORKER_COUNT_WITH_CHUNK, LEASE_TIME, StatusCodes, CHUNK_EXCHANGE, GFSEvent
+from GFS.rds.redis import set_primary_during_chunk_creation, is_alive, set_lease, get_primary, get_my_version, \
+  update_chunk_version
 
 
 class GFS_Server:
@@ -20,17 +21,28 @@ class GFS_Server:
     self.chunk_handle_to_metadata = defaultdict(ChunkHandle)
     self.chunk_handle_event = Event()
     self.lease_update_event = Event()
+    self.handle_dead_primary_event = Event()
     self.worker_names = worker_names
+
+    self.connection = pika.BlockingConnection(PIKA_CONNECTION_PARAMETERS)
+    self.channel = self.connection.channel()
+    self.request_queue = self.channel.queue_declare(queue=SERVER_REQUEST_QUEUE, exclusive=False)
+    self.channel.queue_declare(queue=SERVER_REPLY_QUEUE, exclusive=False)
+    self.version_number_update_queue = self.channel.queue_declare(queue='', exclusive=True)
+
+
+
+
+
 
   def handle_errors(self, status_code: StatusCodes, **kwargs):
     if status_code == StatusCodes.BAD_OFFSET:
       print(f'Bad offset {kwargs["offset"]}')
       recommended_offset = kwargs['offset']
-      channel = kwargs['channel']
       key = kwargs['key']
       properties = kwargs['properties']
 
-      channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE,
+      self.channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE,
                             routing_key=properties.reply_to,
                             body=b'',
                             properties=pika.BasicProperties(headers={
@@ -45,16 +57,64 @@ class GFS_Server:
     else:
       raise NotImplementedError
 
+
+  def handle_dead_primary(self,  handle_dead_primary_event :Event ):
+
+    while not handle_dead_primary_event.is_set():
+      time.sleep(LEASE_TIME/20)
+
+      for file_name, file_to_chunk_dict in self.file_to_chunk_handles.items():
+        for offset, chunk_handle in file_to_chunk_dict.items():
+          _, time_to_expire = get_primary(chunk_handle.get_uid())
+
+          if time_to_expire < time.perf_counter():
+            my_version = chunk_handle.version
+            new_version = my_version + 1
+            servers = chunk_handle.servers
+            id = chunk_handle.get_uid()
+
+            candidates = [server for server in servers if get_my_version(server, id) == my_version]
+
+            routing_key = f'.{".".join(candidates)}'
+
+            self.channel.basic_publish(exchange=CHUNK_EXCHANGE,
+                                       routing_key=routing_key,
+                                       properties=pika.BasicProperties(
+                                         headers={'key': id,
+                                                  'type': GFSEvent.UPDATE_CHUNK_VERSION},
+                                         reply_to=self.version_number_update_queue.method.queue))
+
+            approved_candidate = None
+            for method_frame, properties, body in self.channel.consume(
+                                                        queue=self.version_number_update_queue.method.queue,
+                                                        auto_ack=True,
+                                                        inactivity_timeout=LEASE_TIME/20):
+              header = properties.headers
+              if header['key'] == id:
+                if get_my_version(header['name']) == new_version:
+                  approved_candidate = header['name']
+
+
+
+            assert approved_candidate is not None, f'Lost the chunk {id}, everyone is dead or old'
+
+            new_primary = approved_candidate
+            new_lease = time.perf_counter() + LEASE_TIME
+
+            chunk_handle.version = new_version
+            chunk_handle.primary = new_primary
+            chunk_handle.lease_time = new_lease
+
+            update_chunk_version(chunk_handle)
+            self.file_to_chunk_handles[file_name][offset] = chunk_handle
+
+
+
   def listen_for_chunk_requests(self, event: Event) -> None:
-    connection = pika.BlockingConnection(PIKA_CONNECTION_PARAMETERS)
-    channel = connection.channel()
-    request_queue = channel.queue_declare(queue=SERVER_REQUEST_QUEUE, exclusive=False)
-    channel.queue_declare(queue=SERVER_REPLY_QUEUE, exclusive=False)
-    # channel.exchange_declare(exchange=SERVER_REQUEST_EXCHANGE)
-    # channel.exchange_declare(exchange=SERVER_REPLY_EXCHANGE)
+
 
     while True:
-      for method_frame, properties, body in channel.consume(queue=request_queue.method.queue, auto_ack=True,
+      for method_frame, properties, body in self.channel.consume(queue=self.request_queue.method.queue, auto_ack=True,
                                                             inactivity_timeout=5):
 
         if method_frame is None:
@@ -69,7 +129,7 @@ class GFS_Server:
 
           if filename not in self.file_to_chunk_handles:
             if offset != 0:
-              kwargs = {'offset': 0, 'channel': channel, 'key': key, 'properties': properties}
+              kwargs = {'offset': 0, 'key': key, 'properties': properties}
               self.handle_errors(StatusCodes.BAD_OFFSET, **kwargs)
               continue
 
@@ -77,7 +137,7 @@ class GFS_Server:
           else:
             if offset - 1 not in self.file_to_chunk_handles[filename]:
               last_offset_in_mem = max(self.file_to_chunk_handles[filename].keys())
-              kwargs = {'offset': last_offset_in_mem, 'channel': channel, 'key':key, 'properties': properties}
+              kwargs = {'offset': last_offset_in_mem, 'key':key, 'properties': properties}
               self.handle_errors(StatusCodes.BAD_OFFSET, **kwargs)
               continue
 
@@ -95,7 +155,7 @@ class GFS_Server:
         chunk_handle = self.file_to_chunk_handles[filename][offset]
         chunk_handle_serialised = pickle.dumps(chunk_handle)
 
-        channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE,
+        self.channel.basic_publish(exchange=SERVER_REPLY_EXCHANGE,
                               routing_key=properties.reply_to,
                               body=chunk_handle_serialised,
                               properties=pika.BasicProperties(
@@ -107,11 +167,11 @@ class GFS_Server:
       if event.is_set():
         break
 
-      requeued_messages = channel.cancel()
+      requeued_messages = self.channel.cancel()
       print('Requeued %i messages' % requeued_messages)
 
-    channel.close()
-    connection.close()
+    self.channel.close()
+    self.connection.close()
 
   def handle_lease(self, lease_update_event:Event ):
 
@@ -146,11 +206,10 @@ class GFS_Server:
             if chunk_handle.lease_time < min_lease_time:
               min_lease_time = chunk_handle.lease_time
 
-      if min_lease_time > LEASE_TIME:
-        time.sleep(LEASE_TIME/2)
 
-      elif min_lease_time - time.perf_counter() > 0.1:
-        time.sleep((min_lease_time - time.perf_counter())/2)
+      # CLIP the sleep time between LEASE_TIME/20 and LEASE_TIME/2
+      sleep_time = min(max( ((min_lease_time - time.perf_counter())/2) , LEASE_TIME/20) , LEASE_TIME/2)
+      time.sleep(sleep_time)
 
 
 
@@ -169,11 +228,15 @@ class GFS_Server:
     chunk_handle_thread.start()
 
     lease_update_thread = Thread(target=self.handle_lease, args=(self.lease_update_event,))
-
     lease_update_thread.start()
+
+    handle_dead_primary_thread = Thread(target=self.handle_dead_primary, args=(self.handle_dead_primary_event,))
+    handle_dead_primary_thread.start()
+
 
     # Can't do join as it will block the server
 
   def stop(self) -> None:
     self.chunk_handle_event.set()
     self.lease_update_event.set()
+    self.handle_dead_primary_event.set()
