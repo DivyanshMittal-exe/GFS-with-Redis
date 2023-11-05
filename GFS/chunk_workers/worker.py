@@ -2,6 +2,7 @@ import logging
 import logging
 import os
 import pickle
+import random
 import signal
 import sys
 import time
@@ -144,6 +145,8 @@ class Chunk_Worker:
   def chunk_exchange(self, event: Event) -> None:
     for method_frame, properties, body in self.channel.consume(queue=self.queue.method.queue):
 
+      # if random.random() < 0.5:
+      #   continue
       header = properties.headers
 
       if header['type'] == GFSEvent.GET_CHUNK:

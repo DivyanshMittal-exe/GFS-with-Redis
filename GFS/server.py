@@ -68,6 +68,7 @@ class GFS_Server:
           _, time_to_expire = get_primary(chunk_handle.get_uid())
 
           if time_to_expire < time.perf_counter():
+            raise OSError
             my_version = chunk_handle.version
             new_version = my_version + 1
             servers = chunk_handle.servers
@@ -79,6 +80,7 @@ class GFS_Server:
 
             self.channel.basic_publish(exchange=CHUNK_EXCHANGE,
                                        routing_key=routing_key,
+
                                        properties=pika.BasicProperties(
                                          headers={'key': id,
                                                   'type': GFSEvent.UPDATE_CHUNK_VERSION},
@@ -196,6 +198,8 @@ class GFS_Server:
         time_to_set = min(min_lease_time, time.perf_counter() + LEASE_TIME)
         set_lease(chunk_with_min_lease_time, time_to_set)
         chunk_with_min_lease_time.lease_time = time_to_set
+      else:
+        raise OSError
 
 
       min_lease_time = float('inf')
