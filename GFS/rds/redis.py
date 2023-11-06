@@ -51,7 +51,7 @@ def update_chunk_version(chunk_handel: ChunkHandle):
   primary = chunk_handel.primary
   lease_time = chunk_handel.lease_time
 
-  rds.hset(PRIMARY_KEY,uuid, primary)
+  rds.hset(PRIMARY_KEY, uuid, primary)
   rds.hset(TIME_TO_EXPIRE_KEY, uuid, lease_time)
 
   chunk_handel_key = f'chunk_handle:{uuid}'

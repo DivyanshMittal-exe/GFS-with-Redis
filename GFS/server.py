@@ -68,7 +68,7 @@ class GFS_Server:
           _, time_to_expire = get_primary(chunk_handle.get_uid())
 
           if time_to_expire < time.perf_counter():
-            raise OSError
+            # raise OSError
             my_version = chunk_handle.version
             new_version = my_version + 1
             servers = chunk_handle.servers
