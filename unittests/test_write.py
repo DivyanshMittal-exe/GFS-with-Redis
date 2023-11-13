@@ -41,7 +41,10 @@ class read_test(unittest.TestCase):
 
       time.sleep(1)
 
-      data = client.read(filename, offset)
+      status = False
+      while not status:
+        status, data, params = client.read(filename, offset)
+        print(f'Recieved {data}, with {status} and params {params}')
 
       data = data.decode()
       print(data)

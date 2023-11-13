@@ -43,7 +43,7 @@ def worker_child_handler(signum, frame):
 
 class Chunk_Worker:
 
-  def __init__(self) -> None:
+  def __init__(self, drop_packet: float = None) -> None:
     self.name = "ChunkWorker-XXXX"
     self.pid = -1
 
@@ -64,6 +64,8 @@ class Chunk_Worker:
 
     self.ack_status = {}
     self.ack_to_client_queue = {}
+
+    self.drop_packet = drop_packet
 
   def dump_memory(self) -> None:
     with open(self.name + DEBUG_DUMP_FILE_SUFFIX, 'w') as f:
@@ -144,10 +146,16 @@ class Chunk_Worker:
 
   def chunk_exchange(self, event: Event) -> None:
     for method_frame, properties, body in self.channel.consume(queue=self.queue.method.queue):
-
-      # if random.random() < 0.5:
-      #   continue
       header = properties.headers
+
+
+      if self.drop_packet:
+        if header['type'] != GFSEvent.PUT_DATA_OF_A_CHUNK:
+          if random.random() < self.drop_packet:
+            print(f'Skipping {method_frame} | {properties} | {body}')
+            continue
+
+
 
       if header['type'] == GFSEvent.GET_CHUNK:
         key = header['key']
@@ -157,15 +165,15 @@ class Chunk_Worker:
 
           self.handle_errors(StatusCodes.READ_FAILED, **kwargs)
           continue
-
+        
+        
 
 
         my_version = get_my_version(self.name, key)
         master_version = get_version(key)
-
-        ######## This assertion is False, as
-        # assert master_version >= my_version, 'Master is behind worker, not possible'
-
+        
+        if header['version'] != master_version:
+          self.handle_errors(StatusCodes.READ_FAILED, **kwargs)
 
 
         if my_version < master_version:
@@ -174,8 +182,7 @@ class Chunk_Worker:
         my_version = get_my_version(self.name, key)
         master_version = get_version(key)
 
-        ######## This assertion is False, as
-        # assert master_version >= my_version, 'Master is behind worker after exchanges, not possible'
+
         if my_version == master_version:
           chunk_to_return_list = self.persistent_chunks[key]
           data = pickle.dumps(chunk_to_return_list)
@@ -214,7 +221,7 @@ class Chunk_Worker:
 
         if current_primary != self.name or time_to_expire <= time.perf_counter():
           kwargs = {'properties': properties, 'request_id': request_id}
-          self.handle_errors(StatusCodes.NOT_A_PRIMARY, kwargs)
+          self.handle_errors(StatusCodes.NOT_A_PRIMARY, **kwargs)
           continue
 
         if chunk_key not in self.persistent_chunks:
@@ -226,7 +233,7 @@ class Chunk_Worker:
 
         if offset_to_write_at is None:
           kwargs = {'properties': properties, 'request_id': request_id}
-          self.handle_errors(StatusCodes.CHUNK_FULL, kwargs)
+          self.handle_errors(StatusCodes.CHUNK_FULL, **kwargs)
           continue
 
         current_state_of_chunk[offset_to_write_at] = self.write_data_in_memory[data_key]
