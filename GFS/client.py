@@ -117,6 +117,7 @@ class GFSClient:
                     "data_key": str(key_for_the_data),
                     "request_id": str(request_id),
                     "type": GFSEvent.WRITE_TO_CHUNK,
+                    'version': chunk_handle.version
                 },
                 reply_to=self.reply_queue.method.queue,
             ),
@@ -147,6 +148,10 @@ class GFSClient:
                 )
 
                 if request_id_returned == request_id:
+                    if status != StatusCodes.WRITE_SUCCESS:
+                        print(f'Write was not successful, I got {status}')
+                        del self.file_offset_to_chunk_handle[key]
+
                     return status
 
         return StatusCodes.WRITE_FAILED

@@ -295,7 +295,7 @@ class Chunk_Worker:
 
         id = header['key']
         my_version = get_version(id)
-        if my_version == get_my_version(id):
+        if my_version == get_my_version(self.name,id):
           set_my_version(self.name, my_version+1)
 
           self.channel.basic_publish(exchange='',

@@ -30,10 +30,10 @@ class read_test(unittest.TestCase):
         total_workers = 5
         
         
-        drop_rates = [0.1, 0.2, 0.3, 0.4]
+        drop_rates = [0.6]
         file_path = os.path.join(current_dir, "write_log.txt")
-        with open(file_path, "a") as log_file:
-            log_file.write(f"Drop Rate|Timing|IndividualLogs\n")
+        # with open(file_path, "w") as log_file:
+        #     log_file.write(f"Drop Rate|Timing|IndividualLogs\n")
         
         for drop_rate in drop_rates:
 
@@ -57,7 +57,6 @@ class read_test(unittest.TestCase):
             with GFS_Server(worker_names) as server:
                 filename = "abc"
                 offset = 0
-
                 str_time = time.time()
 
                 for i in range(total_write_times):
@@ -80,6 +79,7 @@ class read_test(unittest.TestCase):
                     all_timings.append(time.time() - str_time)
 
                 end_time = time.time()
+                server.stop()
 
             # timings_log.append([drop_rate, end_time - str_time])
 
