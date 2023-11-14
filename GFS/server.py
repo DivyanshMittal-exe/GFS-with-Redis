@@ -96,7 +96,9 @@ class GFS_Server:
   def listen_for_chunk_requests(self, event: Event) -> None:
 
     while True:
-      for method_frame, properties, body in self.channel.consume(queue=self.request_queue.method.queue, auto_ack=False,
+      for method_frame, properties, body in self.channel.consume(
+              queue=self.request_queue.method.queue,
+              auto_ack=False,
               inactivity_timeout=5):
 
         if method_frame is None:
