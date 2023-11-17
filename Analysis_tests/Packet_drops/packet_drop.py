@@ -30,7 +30,7 @@ class read_test(unittest.TestCase):
         total_workers = 5
         
         
-        drop_rates = [0.3]
+        drop_rates = [0.8]
         file_path = os.path.join(current_dir, "write_log.txt")
         # with open(file_path, "w") as log_file:
         #     log_file.write(f"Drop Rate|Timing|IndividualLogs\n")

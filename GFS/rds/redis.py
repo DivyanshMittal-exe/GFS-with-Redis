@@ -8,7 +8,10 @@ from GFS.chunk import ChunkHandle
 PRIMARY_KEY = 'primary'
 TIME_TO_EXPIRE_KEY = 'time_to_expire'
 
+
 rds = Redis(host=config.REDIS_HOST, port=config.REDIS_PORT, password='', db=0, decode_responses=True)
+rds.flushall()
+rds.flushdb()
 
 class Heart:
   def __init__(self, key: str):
@@ -50,12 +53,14 @@ def update_chunk_version(chunk_handel: ChunkHandle):
   uuid = chunk_handel.get_uid()
   primary = chunk_handel.primary
   lease_time = chunk_handel.lease_time
+  new_version = chunk_handel.version
 
   rds.hset(PRIMARY_KEY, uuid, primary)
   rds.hset(TIME_TO_EXPIRE_KEY, uuid, lease_time)
 
   chunk_handel_key = f'chunk_handle:{uuid}'
-  rds.hset(chunk_handel_key, 'MASTER', chunk_handel.version)
+  rds.hset(chunk_handel_key, 'MASTER', new_version)
+  print('Updated version to ', new_version, 'for', chunk_handel_key)
 
 def set_lease(chunk_handle: ChunkHandle, time: float)->None:
   rds.hset(TIME_TO_EXPIRE_KEY, chunk_handle.get_uid(), time)
@@ -63,7 +68,6 @@ def set_lease(chunk_handle: ChunkHandle, time: float)->None:
 
 def get_primary(uuid: str) -> tuple[str, float]:
   primary = rds.hget(PRIMARY_KEY, uuid)
-  print(f"The primary of {uuid} is {primary}")
   time_to_expire = rds.hget(TIME_TO_EXPIRE_KEY, uuid)
   time_to_expire = float(time_to_expire)
 

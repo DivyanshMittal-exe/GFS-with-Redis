@@ -43,7 +43,7 @@ def worker_child_handler(signum, frame):
 
 class Chunk_Worker:
 
-  def __init__(self, drop_packet: float = None) -> None:
+  def __init__(self, drop_packet: float = None,die_randomly: float=None) -> None:
     self.name = "ChunkWorker-XXXX"
     self.pid = -1
 
@@ -67,6 +67,12 @@ class Chunk_Worker:
 
     self.drop_packet = drop_packet
 
+    self.die_randomly = die_randomly
+    if self.die_randomly is not None:
+      self.am_i_alive = False
+    else:
+      self.am_i_alive = True
+
   def dump_memory(self) -> None:
     with open(self.name + DEBUG_DUMP_FILE_SUFFIX, 'w') as f:
       f.write(str(self.write_data_in_memory))
@@ -74,7 +80,8 @@ class Chunk_Worker:
   def breathe(self, event: Event) -> None:
     self.heart = redis.Heart(self.name)
     while True:
-      self.heart.beat()
+      if self.am_i_alive:
+        self.heart.beat()
       time.sleep(1)
       if event.is_set():
         break
@@ -120,12 +127,18 @@ class Chunk_Worker:
     all_servers = get_servers(key)
     master_version = get_version(key)
     for server in all_servers:
-      if get_my_version(server, key) == master_version:
+      server_version = get_my_version(server, key)
+      if server_version == master_version:
         routing_key = f'.{server}.'
 
-        self.channel.basic_publish(exchange=CHUNK_EXCHANGE, routing_key=routing_key,
+        self.channel.basic_publish(exchange=CHUNK_EXCHANGE,
+                                   body=b'',
+                                   routing_key=routing_key,
                                    properties=pika.BasicProperties(
-                                     headers={'key': key, 'type': GFSEvent.GET_CHUNK},
+                                     headers={'key': key,
+                                              'type': GFSEvent.GET_CHUNK,
+                                              'version':server_version,
+                                              },
                                      reply_to=self.internal_chunk_exchange_queue.method.queue))
 
         for method_frame_r, properties_r, body_r in self.channel.consume(queue=self.internal_chunk_exchange_queue,
@@ -155,6 +168,9 @@ class Chunk_Worker:
             print(f'Skipping {method_frame} | {properties} | {body}')
             continue
 
+      if not self.am_i_alive:
+        if header['type'] != GFSEvent.PUT_DATA_OF_A_CHUNK:
+          continue
 
 
       if header['type'] == GFSEvent.GET_CHUNK:
@@ -166,12 +182,13 @@ class Chunk_Worker:
           self.handle_errors(StatusCodes.READ_FAILED, **kwargs)
           continue
         
-        
 
 
         my_version = get_my_version(self.name, key)
         master_version = get_version(key)
-        
+
+        print(f'The version of header is {header} and master is at {master_version}')
+
         if header['version'] != master_version:
           self.handle_errors(StatusCodes.READ_FAILED, **kwargs)
 
@@ -218,6 +235,9 @@ class Chunk_Worker:
         self.ack_to_client_queue[request_id] = properties.reply_to
 
         current_primary, time_to_expire = redis.get_primary(chunk_key)
+
+        print(f'The current primary is {current_primary}, I am {self.name}')
+        print(f'It is valid till {time_to_expire}. Current time is {time.perf_counter()}')
 
         if current_primary != self.name or time_to_expire <= time.perf_counter():
           kwargs = {'properties': properties, 'request_id': request_id}
@@ -294,9 +314,13 @@ class Chunk_Worker:
       elif header['type'] == GFSEvent.UPDATE_CHUNK_VERSION:
 
         id = header['key']
-        my_version = get_version(id)
-        if my_version == get_my_version(self.name,id):
-          set_my_version(self.name, my_version+1)
+        masters_version = get_version(id)
+        version_to_update_to = header['version_to_update_to']
+
+        if masters_version == get_my_version(self.name,id):
+
+          if version_to_update_to == masters_version + 1:
+            set_my_version(self.name, id, masters_version + 1)
 
           self.channel.basic_publish(exchange='',
                                      routing_key=properties.reply_to,
@@ -305,6 +329,7 @@ class Chunk_Worker:
                                        headers={'key': id,
                                                 'type': GFSEvent.ACK_TO_UPDATE_CHUNK_VERSION,
                                                 'name': self.name}))
+
 
 
 
@@ -319,6 +344,10 @@ class Chunk_Worker:
   def work(self, event: Event) -> None:
     while True:
       time.sleep(1)
+      if self.die_randomly:
+        if random.random() < self.die_randomly:
+          print(f'{self.name} is dying| Current status is {self.am_i_alive}')
+          self.am_i_alive = not self.am_i_alive
       if event.is_set():
         break
 

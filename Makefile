@@ -6,6 +6,8 @@ backend: redis_server rabbitmq
 
 redis_server:
 	rm dump.rdb || true
+	#sudo docker stop my-redis-container
+#	gnome-terminal -- bash -c "sudo docker run -it --rm -d -p 6379:6379 --name my-redis-container redis"
 	gnome-terminal -- bash -c "redis-server --port ${REDIS_PORT}"
 
 rabbitmq:

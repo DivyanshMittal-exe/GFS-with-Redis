@@ -80,9 +80,15 @@ class GFSClient:
         key = get_key(filename, offset)
 
         if key not in self.file_offset_to_chunk_handle:
+            print(f'I query for the chunk server for {filename} at {offset}')
             self.get_chunk_handle(filename, offset)
 
+        if key not in self.file_offset_to_chunk_handle:
+            return StatusCodes.WRITE_FAILED
+
         chunk_handle: ChunkHandle = self.file_offset_to_chunk_handle[key]
+
+        # print(f'Got chunk handle as {chunk_handle}')
 
         workers_with_this_chunk = chunk_handle.servers
         routing_key_to_place_chunk = f".{'.'.join(workers_with_this_chunk)}."
@@ -104,6 +110,8 @@ class GFSClient:
         write_request_to_server = chunk_handle.primary
 
         routing_key = f".{write_request_to_server}."
+
+        print(f'I believe the primary is {routing_key}')
 
         request_id = str(uuid.uuid4())
 

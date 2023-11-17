@@ -40,7 +40,9 @@ class read_test(unittest.TestCase):
         
         all_timings = []
 
-        workers = [Chunk_Worker() for _ in range(total_workers)]
+        die_prob = 0.8
+
+        workers = [Chunk_Worker(die_randomly=die_prob) for _ in range(total_workers)]
 
         for worker in workers:
             worker.make_worker()
@@ -51,31 +53,34 @@ class read_test(unittest.TestCase):
         # Create a dictionary to store the status of each worker
 
 
-        def worker_management_thread():
-            worker_status = {worker.name: "alive" for worker in workers}
-
-            while True:
-                # Randomly select a worker
-                worker_to_manage = random.choice(workers)
-
-                # Check the status of the selected worker
-                if worker_status[worker_to_manage.name] == "alive":
-                    # If alive, kill it
-                    os.kill(worker_to_manage.pid, signal.SIGKILL)
-                    worker_status[worker_to_manage.name] = "dead"
-                    print(f"Worker {worker_to_manage.name} killed.")
-                else:
-                    # If dead, revive it
-                    os.kill(worker_to_manage.pid, signal.SIGCONT)
-                    worker_status[worker_to_manage.name] = "alive"
-                    print(f"Worker {worker_to_manage.name} revived.")
-
-                # Sleep for a random amount of time
-                sleep_time = random.uniform(1, 10)  # Adjust the range as needed
-                time.sleep(sleep_time)
-
-        worker_management_thread = threading.Thread(target=worker_management_thread)
-        worker_management_thread.start()
+        # def worker_management_thread():
+        #     worker_status = {worker.name: "alive" for worker in workers}
+        #
+        #
+        #     # time.sleep(4)
+        #
+        #     while True:
+        #         # Randomly select a worker
+        #         worker_to_manage = random.choice(workers)
+        #
+        #         # Check the status of the selected worker
+        #         if worker_status[worker_to_manage.name] == "alive":
+        #             # If alive, kill it
+        #             os.kill(worker_to_manage.pid, signal.SIGSTOP)
+        #             worker_status[worker_to_manage.name] = "dead"
+        #             print(f"Worker {worker_to_manage.name} killed.")
+        #         else:
+        #             # If dead, revive it
+        #             os.kill(worker_to_manage.pid, signal.SIGCONT)
+        #             worker_status[worker_to_manage.name] = "alive"
+        #             print(f"Worker {worker_to_manage.name} revived.")
+        #
+        #         # Sleep for a random amount of time
+        #         sleep_time = random.uniform(1, 10)  # Adjust the range as needed
+        #         time.sleep(sleep_time)
+        #
+        # worker_management_thread = threading.Thread(target=worker_management_thread)
+        # worker_management_thread.start()
 
         message = secrets.token_bytes(1024 * 1024)
         print(worker_names)
@@ -119,7 +124,7 @@ class read_test(unittest.TestCase):
 
 
         with open(file_path, "a") as log_file:
-            log_file.write(f"{0}|{end_time-str_time}|{all_timings}\n")
+            log_file.write(f"{die_prob}|{end_time-str_time}|{all_timings}\n")
 
         os.system(f"rm *{DEBUG_DUMP_FILE_SUFFIX}")
 

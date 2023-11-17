@@ -16,7 +16,7 @@ TIMEOUT = 0.1
 WORKER_COUNT = 4
 
 PIKA_HOST = 'localhost'
-PIKA_CONNECTION_PARAMETERS = pika.ConnectionParameters(host=PIKA_HOST)
+PIKA_CONNECTION_PARAMETERS = pika.ConnectionParameters(host=PIKA_HOST, heartbeat=10000)
 CHUNK_EXCHANGE = 'chunk_exchange'
 
 # DEBUG VARIABLES
